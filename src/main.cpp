@@ -5,7 +5,7 @@
 #include <PubSubClient.h>
 
 const char* ssid = "Adam_2.4G";
-const char* password = "******";
+const char* password = "*************";
 const char* mqtt_server = "broker.shiftr.io";
 
 // Initialize pin variables
@@ -47,10 +47,22 @@ void callback(char* topic, byte* payload, unsigned int length) {
   Serial.print("Message arrived [");
   Serial.print(topic);
   Serial.print("] ");
-  for (int i = 0; i < length; i++) {
+  for (unsigned int i = 0; i < length; i++) {
     Serial.print((char)payload[i]);
   }
   Serial.println();
+  if((char)payload[0] == 'O' && (char)payload[1] == 'N'){
+    Serial.print("Got inside decider - ON");
+    buttonFlag = true;
+    //relayStatus = true;
+  }
+  else if((char)payload[0] == 'O' && (char)payload[1] == 'F' && (char)payload[2] == 'F'){
+    Serial.print("Got inside decider - OFF");
+    buttonFlag = true;
+    //relayStatus = false;
+  }
+}
+void decideAction(){
 
 }
 void printThermistor(){
@@ -107,12 +119,13 @@ bool establishMQTTConnection(){
     Serial.print("Attempting MQTT connection...");
     String clientId = "ESP8266Client-WemosPool";
 
-    if (client.connect(clientId.c_str(), "*****", "******")) {
+    if (client.connect(clientId.c_str(), "*********", "***************************")) {
       Serial.println("connected");
       // Once connected, publish an announcement...
-      client.publish("status", "alive");
+      String statusToPublish = (relayStatus)? "true": "false";
+      client.publish("garden/pool/watchdog/relay/state", statusToPublish.c_str());
       // ... and resubscribe
-      client.subscribe("management");
+      client.subscribe("garden/pool/watchdog/relay/set");
       return true;
     } else {
       Serial.print("failed, rc=");
@@ -180,7 +193,7 @@ void loop(){
     client.loop();
     if(mqttConnection){
       if(publish_timer + 5000 < millis()){
-        client.publish("status","alive");
+        client.publish("garden/pool/watchdog/status","alive");
         publish_timer = millis();
       }
     }
@@ -198,6 +211,9 @@ void loop(){
   display.setCursor(0,10);
   display.print("MQTT:");
   display.print((mqttConnection)?"Connected":"Disconnected");
+  display.setCursor(0,25);
+  display.print("Filtrace: ");
+  display.print((relayStatus)?"Zapnuta":"Vypnuta");
   //display.print(analogRead(thermistor));
   
   if(thermo_timer + 1000 < millis()){
@@ -209,9 +225,11 @@ void loop(){
     if(relayStatus){
         digitalWrite(relay,LOW);
         relayStatus = false;
+        client.publish("garden/pool/watchdog/relay/state","false");
     }else {
       digitalWrite(relay,HIGH);    
       relayStatus = true;
+      client.publish("garden/pool/watchdog/relay/state","true");
     }
     buttonFlag = false;
   }
