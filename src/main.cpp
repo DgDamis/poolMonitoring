@@ -5,7 +5,7 @@
 #include <PubSubClient.h>
 
 const char* ssid = "Adam_2.4G";
-const char* password = "*************";
+const char* password = "************";
 const char* mqtt_server = "broker.shiftr.io";
 
 // Initialize pin variables
@@ -52,59 +52,31 @@ void callback(char* topic, byte* payload, unsigned int length) {
   }
   Serial.println();
   if((char)payload[0] == 'O' && (char)payload[1] == 'N'){
-    Serial.print("Got inside decider - ON");
     buttonFlag = true;
-    //relayStatus = true;
   }
   else if((char)payload[0] == 'O' && (char)payload[1] == 'F' && (char)payload[2] == 'F'){
-    Serial.print("Got inside decider - OFF");
     buttonFlag = true;
-    //relayStatus = false;
   }
 }
-void decideAction(){
 
-}
-void printThermistor(){
-  Serial.print("Hodnota analogu A0:");
-  Serial.println(analogRead(thermistor));
-}
 void ICACHE_RAM_ATTR interruptButtonFlag(){
   // Timer zabraňující chytání zákmitů
   if(zakmit_timer +700 < millis()){
     zakmit_timer = millis();
     buttonFlag = true;
-    //pocetZakmitu++; //Debugovací proměnná
   }
 }
 bool establishWifiConnection(){
   wifiConnection_timer = millis();
-  //unsigned int timeout = millis();
-  //unsigned int print_timer = millis();
-
   Serial.println();
   Serial.println();
   Serial.print("Connecting to ");
   Serial.println(ssid);
-
   WiFi.mode(WIFI_STA);
   WiFi.begin(ssid, password);
 
-  /* 
-  while (WiFi.status() != WL_CONNECTED && timeout + 5000 > millis() ) {
-      if(print_timer + 100 < millis()){
-          Serial.print(".");
-          print_timer = millis();
-      }
-      yield();
-  }
-  */
-
   if(WiFi.status() == WL_CONNECTED){
-      //Serial.println("");
-      //Serial.println("WiFi connected");
-      ///Serial.println("IP address: ");
-      //Serial.println(WiFi.localIP());
+      getWifiInfo();
       return true;
   }
   else {
@@ -119,7 +91,7 @@ bool establishMQTTConnection(){
     Serial.print("Attempting MQTT connection...");
     String clientId = "ESP8266Client-WemosPool";
 
-    if (client.connect(clientId.c_str(), "*********", "***************************")) {
+    if (client.connect(clientId.c_str(), "************", "******************")) {
       Serial.println("connected");
       // Once connected, publish an announcement...
       String statusToPublish = (relayStatus)? "true": "false";
@@ -148,15 +120,13 @@ void setup() {
   Serial.begin(9600);         // Initialize serial for communication 
   //Serial.setDebugOutput(false); // Turn off WiFi debug messages for now 
   display.begin(SSD1306_SWITCHCAPVCC,0x3C);
-  display.display();
-  delay(1000);
-   // Clear the buffer.
-  //display.clearDisplay(); 
+  display.display(); // Vykreslení loga knihovny na displeji aneb první známka funkčnosti :D
+  delay(1000); // Pozdržení programu, aby logo nezmizelo moc rychle
   pinMode(relay,OUTPUT);
   pinMode(thermistor,INPUT);
   pinMode(D7, INPUT_PULLUP);
   attachInterrupt(digitalPinToInterrupt(int(D7)), interruptButtonFlag,FALLING);
-  digitalWrite(relay,LOW);
+  digitalWrite(relay,LOW);  // Při spuštění je relé defaultně vypnuté
   relayStatus = false;
   wifiConnection = establishWifiConnection();
   client.setServer(mqtt_server, 1883);
@@ -168,30 +138,28 @@ void setup() {
 
 void loop(){
   loops++;
-  if(loopBenchmark +1000 < millis()){
+  if(loopBenchmark +1000 < millis()){ // Benchmark rychlosti programu
     Serial.print("Počet loopu za sekundu:");
     Serial.println(loops);
-    //Serial.print("Počet zakmitu:");
-    //Serial.println(pocetZakmitu);
     loops = 0;
     loopBenchmark = millis();
   }
-    if(!wifiConnection){
+    if(!wifiConnection){ // Kontrola připojení Wifi. Pokud není připojení aktivní, dojde ke kontrole aktuálního stavu
       if(WiFi.status() == WL_CONNECTED){
-        wifiConnection = true;
-        getWifiInfo();
-        mqtt_delay = millis();
+        wifiConnection = true; // Stav Wifi připojení se změní na funkční
+        getWifiInfo(); // Funkce vypíše informace o Wifi připojení
+        mqtt_delay = millis(); // Při připojení dojde k pozdržení pokusu o připojení k MQTT serveru, aby nedošlo k chybě při příliš brzkém pokusu o připojení
       }
-    }else
+    }else // Pokud je Wifi aktivní dojde k případnému připojení k MQTT serveru
     {
-      if(!mqttConnection && (mqtt_delay + 5000 < millis())){
-      mqttConnection = establishMQTTConnection();
-      mqtt_delay = millis();
+      if(!mqttConnection && (mqtt_delay + 5000 < millis())){   
+      mqttConnection = establishMQTTConnection();     // Funkce se pokusí o připojení na MQTT Server
+      mqtt_delay = millis();   // Pokud nedošlo k úspěšnému připojení, je další pokus iniciován po 5 sekundách
       }
     }
     
-    client.loop();
-    if(mqttConnection){
+    client.loop(); // Udržování funkčnosti MQTT
+    if(mqttConnection){   // Informace o stavu zařízení je odesílaná na MQTT Server každých 5 sekund
       if(publish_timer + 5000 < millis()){
         client.publish("garden/pool/watchdog/status","alive");
         publish_timer = millis();
@@ -206,32 +174,34 @@ void loop(){
   // Nastaví pozici kurzoru
   display.setCursor(0,0);
   // Vypíše text na displej (nezobrazí ho)
-  display.print("Wifi:");
-  display.print((wifiConnection)?"Connected":"Disconnected");
-  display.setCursor(0,10);
-  display.print("MQTT:");
-  display.print((mqttConnection)?"Connected":"Disconnected");
+          //display.print("Wifi:");
+          //display.print((wifiConnection)?"Connected":"Disconnected");
+          //display.setCursor(0,10);
+          //display.print("MQTT:");
+          //display.print((mqttConnection)?"Connected":"Disconnected");
+      display.print("Stav: ");
+      display.print((wifiConnection && mqttConnection)? "Online": "Offline");
   display.setCursor(0,25);
   display.print("Filtrace: ");
   display.print((relayStatus)?"Zapnuta":"Vypnuta");
-  //display.print(analogRead(thermistor));
   
   if(thermo_timer + 1000 < millis()){
   //printThermistor();
   thermo_timer = millis();
   }
   
+  // Zajištění přepnutí při aktivovaném buttonFlagu s publikací informace na MQTT
   if(buttonFlag){
-    if(relayStatus){
-        digitalWrite(relay,LOW);
-        relayStatus = false;
-        client.publish("garden/pool/watchdog/relay/state","false");
+    if(relayStatus){ // Pokud je relé aktivované dojde k deaktivaci
+        digitalWrite(relay,LOW);  
+        relayStatus = false;      
+        client.publish("garden/pool/watchdog/relay/state","false"); // Publikace informace o změně na MQTT
     }else {
       digitalWrite(relay,HIGH);    
       relayStatus = true;
       client.publish("garden/pool/watchdog/relay/state","true");
     }
-    buttonFlag = false;
+    buttonFlag = false;   // Deaktivace flagu
   }
   
   // Inicializuje zobrazení na displeji
