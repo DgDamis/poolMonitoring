@@ -4,13 +4,13 @@
 #include <ESP8266WiFi.h>
 #include <PubSubClient.h>
 
-const char* ssid = "Adam_2.4G";
-const char* password = "************";
-const char* mqtt_server = "broker.shiftr.io";
+const char* ssid = "**************";
+const char* password = "*******************";
+const char* mqtt_server = "*****************";
 
 // Initialize pin variables
 int relay = D6;
-int thermistor = A0;
+int termPin = A0;               // Analogový pin, ke kterému je termistor připojen
 // Initialize timers
 unsigned int loopBenchmark = 0;
 unsigned int thermo_timer = 0;
@@ -27,10 +27,23 @@ bool mqttConnection = false;
 // Initialize normal variables
 int loops = 0;
 int pocetZakmitu = 0;
+float waterTemp;
+String str;
 // MQTT Variables
 long lastMsg = 0;
 char msg[50];
 int value = 0;
+// Thermistor Variables
+int termNom = 10000;  // Referenční odpor termistoru
+int refTep = 25;      // Teplota pro referenční odpor
+int beta = 3380;      // Beta faktor    
+int rezistor = 10033; // hodnota odporu v sérii
+/* Alternative Thermistor Settings  
+int termNom = 10000;  // Referenční odpor termistoru
+int refTep = 25;      // Teplota pro referenční odpor
+int beta = 3950;      // Beta faktor
+int rezistor = 10033; // hodnota odporu v sérii
+*/
 
 Adafruit_SSD1306 display(-1);
 WiFiClient espClient;
@@ -66,6 +79,13 @@ void ICACHE_RAM_ATTR interruptButtonFlag(){
     buttonFlag = true;
   }
 }
+void getWifiInfo(){
+  Serial.println("");
+      Serial.println("WiFi connected");
+      Serial.println("IP address: ");
+      Serial.println(WiFi.localIP());
+  Serial.println("");
+}
 bool establishWifiConnection(){
   wifiConnection_timer = millis();
   Serial.println();
@@ -91,7 +111,7 @@ bool establishMQTTConnection(){
     Serial.print("Attempting MQTT connection...");
     String clientId = "ESP8266Client-WemosPool";
 
-    if (client.connect(clientId.c_str(), "************", "******************")) {
+    if (client.connect(clientId.c_str(), "***********", "*******************")) {
       Serial.println("connected");
       // Once connected, publish an announcement...
       String statusToPublish = (relayStatus)? "true": "false";
@@ -108,12 +128,29 @@ bool establishMQTTConnection(){
   }
 return false;
 }
-void getWifiInfo(){
-  Serial.println("");
-      Serial.println("WiFi connected");
-      Serial.println("IP address: ");
-      Serial.println(WiFi.localIP());
-  Serial.println("");
+
+float thermistorReadout(){
+  float napeti;
+  //změření napětí na termistoru
+  napeti = analogRead(termPin);
+
+  // Konverze změřené hodnoty na odpor termistoru
+  napeti = 1023 / napeti - 1;
+  napeti = rezistor / napeti;
+
+  //Výpočet teploty podle vztahu pro beta faktor
+  float teplota;
+  teplota = napeti / termNom;         // (R/Ro)
+  teplota = log(teplota);             // ln(R/Ro)
+  teplota /= beta;                    // 1/B * ln(R/Ro)
+  teplota += 1.0 / (refTep + 273.15); // + (1/To)
+  teplota = 1.0 / teplota;            // Převrácená hodnota
+  teplota -= 273.15;                  // Převod z Kelvinů na stupně Celsia
+
+  //Serial.print("Teplota je: ");
+  //Serial.print(teplota);
+  //Serial.println(" *C");
+  return teplota;
 }
 
 void setup() {
@@ -123,7 +160,7 @@ void setup() {
   display.display(); // Vykreslení loga knihovny na displeji aneb první známka funkčnosti :D
   delay(1000); // Pozdržení programu, aby logo nezmizelo moc rychle
   pinMode(relay,OUTPUT);
-  pinMode(thermistor,INPUT);
+  pinMode(termPin,INPUT);
   pinMode(D7, INPUT_PULLUP);
   attachInterrupt(digitalPinToInterrupt(int(D7)), interruptButtonFlag,FALLING);
   digitalWrite(relay,LOW);  // Při spuštění je relé defaultně vypnuté
@@ -139,8 +176,8 @@ void setup() {
 void loop(){
   loops++;
   if(loopBenchmark +1000 < millis()){ // Benchmark rychlosti programu
-    Serial.print("Počet loopu za sekundu:");
-    Serial.println(loops);
+    //Serial.print("Počet loopu za sekundu:");
+    //Serial.println(loops);
     loops = 0;
     loopBenchmark = millis();
   }
@@ -161,7 +198,7 @@ void loop(){
     client.loop(); // Udržování funkčnosti MQTT
     if(mqttConnection){   // Informace o stavu zařízení je odesílaná na MQTT Server každých 5 sekund
       if(publish_timer + 5000 < millis()){
-        client.publish("garden/pool/watchdog/status","alive");
+        client.publish("garden/pool/watchdog/status","online");
         publish_timer = millis();
       }
     }
@@ -171,23 +208,31 @@ void loop(){
   display.setTextSize(1);
   // Nastaví barvu textu
   display.setTextColor(WHITE);
-  // Nastaví pozici kurzoru
-  display.setCursor(0,0);
   // Vypíše text na displej (nezobrazí ho)
-          //display.print("Wifi:");
-          //display.print((wifiConnection)?"Connected":"Disconnected");
-          //display.setCursor(0,10);
-          //display.print("MQTT:");
-          //display.print((mqttConnection)?"Connected":"Disconnected");
-      display.print("Stav: ");
-      display.print((wifiConnection && mqttConnection)? "Online": "Offline");
-  display.setCursor(0,25);
-  display.print("Filtrace: ");
-  display.print((relayStatus)?"Zapnuta":"Vypnuta");
+  display.setTextSize(4);
+  display.setCursor(0,5);
+  display.print((relayStatus)?"ON":"OFF");    //Stav relé (filtrace)
+  display.setTextSize(1);
+  display.setCursor(80,7);
+  display.print((wifiConnection && mqttConnection)? "Online": "Offline");
+  display.setCursor(84,24);
+  display.print("10:23");
   
-  if(thermo_timer + 1000 < millis()){
-  //printThermistor();
-  thermo_timer = millis();
+  //display.print("Filtrace: ");
+  // DEBUG DISPLEJ
+        //display.setCursor(0,0);
+        //display.print("Wifi:");
+        //display.print((wifiConnection)?"Connected":"Disconnected");
+        //display.setCursor(0,10);
+        //display.print("MQTT:");
+        //display.print((mqttConnection)?"Connected":"Disconnected");
+  
+  
+  if(thermo_timer + 30000 < millis()){
+     waterTemp = thermistorReadout();
+      str = String(waterTemp);
+     client.publish("garden/pool/watchdog/water/temperature",str.c_str()); // Publikace teploty vody na MQTT
+    thermo_timer = millis();
   }
   
   // Zajištění přepnutí při aktivovaném buttonFlagu s publikací informace na MQTT
