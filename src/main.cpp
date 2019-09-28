@@ -194,21 +194,19 @@ void loop(){
     loops = 0;
     loopBenchmark = millis();
   }
-    if(!wifiConnection){ // Kontrola připojení Wifi. Pokud není připojení aktivní, dojde ke kontrole aktuálního stavu
-      if(WiFi.status() == WL_CONNECTED){
-        wifiConnection = true; // Stav Wifi připojení se změní na funkční
-        getWifiInfo(); // Funkce vypíše informace o Wifi připojení
-        mqtt_delay = millis(); // Při připojení dojde k pozdržení pokusu o připojení k MQTT serveru, aby nedošlo k chybě při příliš brzkém pokusu o připojení
-      }
-    }else // Pokud je Wifi aktivní dojde k případnému připojení k MQTT serveru
-    {
-      if(!mqttConnection && (mqtt_delay + 5000 < millis())){   
+  if(!wifiConnection){ // Kontrola připojení Wifi. Pokud není připojení aktivní, dojde ke kontrole aktuálního stavu
+    if(WiFi.status() == WL_CONNECTED){
+      wifiConnection = true; // Stav Wifi připojení se změní na funkční
+      getWifiInfo(); // Funkce vypíše informace o Wifi připojení
+      mqtt_delay = millis(); // Při připojení dojde k pozdržení pokusu o připojení k MQTT serveru, aby nedošlo k chybě při příliš brzkém pokusu o připojení
+    }
+  }else{ // Pokud je Wifi aktivní dojde k případnému připojení k MQTT serveru
+    if(!mqttConnection && (mqtt_delay + 5000 < millis())){   
       mqttConnection = establishMQTTConnection();     // Funkce se pokusí o připojení na MQTT Server
       mqtt_delay = millis();   // Pokud nedošlo k úspěšnému připojení, je další pokus iniciován po 5 sekundách
-      }
     }
-    
-    if(wifiConnection && !initsInitialiazed){
+  }
+  if(wifiConnection && !initsInitialiazed){
       // Initialize a NTPClient to get time
       timeClient.begin();
       // Set offset time in seconds to adjust for your timezone, for example:
@@ -217,15 +215,14 @@ void loop(){
       // GMT -1 = -3600
       // GMT 0 = 0
       timeClient.setTimeOffset(7200);
-    }
-
-    client.loop(); // Udržování funkčnosti MQTT
-    if(mqttConnection){   // Informace o stavu zařízení je odesílaná na MQTT Server každých 5 sekund
+  }
+  client.loop(); // Udržování funkčnosti MQTT
+  if(mqttConnection){   // Informace o stavu zařízení je odesílaná na MQTT Server každých 5 sekund
       if(publish_timer + 5000 < millis()){
         client.publish("garden/pool/watchdog/status","online");
         publish_timer = millis();
       }
-    }
+  }
   // Smaže obsah na displeji
   display.clearDisplay(); 
   // Nastaví velikost textu
@@ -241,8 +238,6 @@ void loop(){
   display.print((wifiConnection && mqttConnection)? "Online": "Offline");
   display.setCursor(84,24);
   display.print("10:23");
-  
-  //display.print("Filtrace: ");
   // DEBUG DISPLEJ
         //display.setCursor(0,0);
         //display.print("Wifi:");
@@ -250,15 +245,12 @@ void loop(){
         //display.setCursor(0,10);
         //display.print("MQTT:");
         //display.print((mqttConnection)?"Connected":"Disconnected");
-  
-  
   if(thermo_timer + 30000 < millis()){
      waterTemp = thermistorReadout();
-      str = String(waterTemp);
+     str = String(waterTemp);
      client.publish("garden/pool/watchdog/water/temperature",str.c_str()); // Publikace teploty vody na MQTT
-    thermo_timer = millis();
+     thermo_timer = millis();
   }
-  
   // Zajištění přepnutí při aktivovaném buttonFlagu s publikací informace na MQTT
   if(buttonFlag){
     if(relayStatus){ // Pokud je relé aktivované dojde k deaktivaci
@@ -272,11 +264,9 @@ void loop(){
     }
     buttonFlag = false;   // Deaktivace flagu
   }
-
   if(millis() > ntp_delay){
     ntp_delay = millis();
   }
-
   if(receivedTimeUpdate){
     int splitT = formattedDate.indexOf("T");
     dayStamp = formattedDate.substring(0, splitT);
@@ -287,9 +277,8 @@ void loop(){
     Serial.print("HOUR: ");
     Serial.println(timeStamp);
   }
-
-  
   // Inicializuje zobrazení na displeji
   display.display();
   //delay(10);
 }
+
