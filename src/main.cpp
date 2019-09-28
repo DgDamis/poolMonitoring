@@ -3,6 +3,9 @@
 #include "Adafruit_GFX.h"
 #include <ESP8266WiFi.h>
 #include <PubSubClient.h>
+// New libraries for NTP Client Implementation
+#include <NTPClient.h>
+#include <WiFiUdp.h>
 
 const char* ssid = "**************";
 const char* password = "*******************";
@@ -18,12 +21,15 @@ unsigned int zakmit_timer = 0;
 unsigned int wifiConnection_timer = 0;
 unsigned int publish_timer = 0;
 unsigned int mqtt_delay = 0;
+unsigned int ntp_delay = 0;
 // Initialize flags
 bool buttonFlag = false;
 // Initialize status 
 bool relayStatus;
 bool wifiConnection = false;
 bool mqttConnection = false;
+bool initsInitialiazed = false;
+bool receivedTimeUpdate = false;
 // Initialize normal variables
 int loops = 0;
 int pocetZakmitu = 0;
@@ -44,10 +50,17 @@ int refTep = 25;      // Teplota pro referenční odpor
 int beta = 3950;      // Beta faktor
 int rezistor = 10033; // hodnota odporu v sérii
 */
+// Variables to save date and time
+String formattedDate;
+String dayStamp;
+String timeStamp;
 
 Adafruit_SSD1306 display(-1);
 WiFiClient espClient;
 PubSubClient client(espClient);
+// Define NTP Client to get time
+WiFiUDP ntpUDP;
+NTPClient timeClient(ntpUDP);
 
 #define LOGO16_GLCD_HEIGHT 32
 #define LOGO16_GLCD_WIDTH  128 
@@ -195,6 +208,17 @@ void loop(){
       }
     }
     
+    if(wifiConnection && !initsInitialiazed){
+      // Initialize a NTPClient to get time
+      timeClient.begin();
+      // Set offset time in seconds to adjust for your timezone, for example:
+      // GMT +1 = 3600
+      // GMT +8 = 28800
+      // GMT -1 = -3600
+      // GMT 0 = 0
+      timeClient.setTimeOffset(7200);
+    }
+
     client.loop(); // Udržování funkčnosti MQTT
     if(mqttConnection){   // Informace o stavu zařízení je odesílaná na MQTT Server každých 5 sekund
       if(publish_timer + 5000 < millis()){
@@ -248,6 +272,22 @@ void loop(){
     }
     buttonFlag = false;   // Deaktivace flagu
   }
+
+  if(millis() > ntp_delay){
+    ntp_delay = millis();
+  }
+
+  if(receivedTimeUpdate){
+    int splitT = formattedDate.indexOf("T");
+    dayStamp = formattedDate.substring(0, splitT);
+    Serial.print("DATE: ");
+    Serial.println(dayStamp);
+    // Extract time
+    timeStamp = formattedDate.substring(splitT+1, formattedDate.length()-1);
+    Serial.print("HOUR: ");
+    Serial.println(timeStamp);
+  }
+
   
   // Inicializuje zobrazení na displeji
   display.display();
