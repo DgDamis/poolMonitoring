@@ -7,13 +7,14 @@
 #include <NTPClient.h>
 #include <WiFiUdp.h>
 
-const char* ssid = "**************";
-const char* password = "*******************";
-const char* mqtt_server = "*****************";
+const char* ssid = "************";
+const char* password = "*************";
+const char* mqtt_server = "***********";
 
 // Initialize pin variables
 int relay = D6;
 int termPin = A0;               // Analogový pin, ke kterému je termistor připojen
+int resetPin = D5;
 // Initialize timers
 unsigned int loopBenchmark = 0;
 unsigned int thermo_timer = 0;
@@ -35,6 +36,8 @@ int loops = 0;
 int pocetZakmitu = 0;
 float waterTemp;
 String str;
+// Variables to save time
+String formattedTime = "00:00";
 // MQTT Variables
 long lastMsg = 0;
 char msg[50];
@@ -50,10 +53,6 @@ int refTep = 25;      // Teplota pro referenční odpor
 int beta = 3950;      // Beta faktor
 int rezistor = 10033; // hodnota odporu v sérii
 */
-// Variables to save date and time
-String formattedDate;
-String dayStamp;
-String timeStamp;
 
 Adafruit_SSD1306 display(-1);
 WiFiClient espClient;
@@ -73,9 +72,15 @@ void callback(char* topic, byte* payload, unsigned int length) {
   Serial.print("Message arrived [");
   Serial.print(topic);
   Serial.print("] ");
+  char message[length+1];
   for (unsigned int i = 0; i < length; i++) {
     Serial.print((char)payload[i]);
+    message[i] = (char)payload[i];
   }
+  message[length] = '\0';
+  String message_string = String(message);
+  Serial.println(message_string);
+  Serial.println(message);
   Serial.println();
   if((char)payload[0] == 'O' && (char)payload[1] == 'N'){
     buttonFlag = true;
@@ -124,7 +129,7 @@ bool establishMQTTConnection(){
     Serial.print("Attempting MQTT connection...");
     String clientId = "ESP8266Client-WemosPool";
 
-    if (client.connect(clientId.c_str(), "***********", "*******************")) {
+    if (client.connect(clientId.c_str(), "***********", "*********************")) {
       Serial.println("connected");
       // Once connected, publish an announcement...
       String statusToPublish = (relayStatus)? "true": "false";
@@ -219,7 +224,7 @@ void loop(){
   client.loop(); // Udržování funkčnosti MQTT
   if(mqttConnection){   // Informace o stavu zařízení je odesílaná na MQTT Server každých 5 sekund
       if(publish_timer + 5000 < millis()){
-        client.publish("garden/pool/watchdog/status","online");
+        client.publish("garden/pool/watchdog/device/status","online");
         publish_timer = millis();
       }
   }
@@ -237,7 +242,7 @@ void loop(){
   display.setCursor(80,7);
   display.print((wifiConnection && mqttConnection)? "Online": "Offline");
   display.setCursor(84,24);
-  display.print("10:23");
+  display.print(formattedTime.substring(0,5));
   // DEBUG DISPLEJ
         //display.setCursor(0,0);
         //display.print("Wifi:");
@@ -264,18 +269,17 @@ void loop(){
     }
     buttonFlag = false;   // Deaktivace flagu
   }
-  if(millis() > ntp_delay){
+  if(millis() > ntp_delay+10000){
+    if(!timeClient.update()){
+      timeClient.forceUpdate();
+    }
+    else receivedTimeUpdate = true;
     ntp_delay = millis();
   }
   if(receivedTimeUpdate){
-    int splitT = formattedDate.indexOf("T");
-    dayStamp = formattedDate.substring(0, splitT);
-    Serial.print("DATE: ");
-    Serial.println(dayStamp);
-    // Extract time
-    timeStamp = formattedDate.substring(splitT+1, formattedDate.length()-1);
-    Serial.print("HOUR: ");
-    Serial.println(timeStamp);
+    formattedTime = timeClient.getFormattedTime();
+    //Serial.println(formattedTime.substring(0,5));
+    receivedTimeUpdate = false;
   }
   // Inicializuje zobrazení na displeji
   display.display();
