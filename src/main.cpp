@@ -7,9 +7,9 @@
 #include <NTPClient.h>
 #include <WiFiUdp.h>
 
-const char* ssid = "************";
-const char* password = "*************";
-const char* mqtt_server = "***********";
+const char* ssid = "*************";
+const char* password = "****************";
+const char* mqtt_server = "******************";
 
 // Initialize pin variables
 int relay = D6;
@@ -79,15 +79,16 @@ void callback(char* topic, byte* payload, unsigned int length) {
   }
   message[length] = '\0';
   String message_string = String(message);
-  Serial.println(message_string);
-  Serial.println(message);
-  Serial.println();
-  if((char)payload[0] == 'O' && (char)payload[1] == 'N'){
+  if(message_string == "ON"){
     buttonFlag = true;
   }
-  else if((char)payload[0] == 'O' && (char)payload[1] == 'F' && (char)payload[2] == 'F'){
+  else if(message_string == "OFF"){
     buttonFlag = true;
   }
+  else if (message_string == "RESET"){
+    digitalWrite(resetPin,HIGH);
+  }
+  
 }
 
 void ICACHE_RAM_ATTR interruptButtonFlag(){
@@ -128,23 +129,23 @@ bool establishMQTTConnection(){
   if(wifiConnection){
     Serial.print("Attempting MQTT connection...");
     String clientId = "ESP8266Client-WemosPool";
-
-    if (client.connect(clientId.c_str(), "***********", "*********************")) {
+    if (client.connect(clientId.c_str(), "********", "*****************")) {
       Serial.println("connected");
       // Once connected, publish an announcement...
       String statusToPublish = (relayStatus)? "true": "false";
       client.publish("garden/pool/watchdog/relay/state", statusToPublish.c_str());
       // ... and resubscribe
       client.subscribe("garden/pool/watchdog/relay/set");
+      client.subscribe("garden/pool/watchdog/device/command");
       return true;
     } else {
       Serial.print("failed, rc=");
       Serial.print(client.state());
       Serial.println(" try again later");
       return false;
+   }
   }
-  }
-return false;
+ return false;
 }
 
 float thermistorReadout(){
@@ -180,6 +181,7 @@ void setup() {
   pinMode(relay,OUTPUT);
   pinMode(termPin,INPUT);
   pinMode(D7, INPUT_PULLUP);
+  pinMode(resetPin,OUTPUT);
   attachInterrupt(digitalPinToInterrupt(int(D7)), interruptButtonFlag,FALLING);
   digitalWrite(relay,LOW);  // Při spuštění je relé defaultně vypnuté
   relayStatus = false;
@@ -241,7 +243,8 @@ void loop(){
   display.setTextSize(1);
   display.setCursor(80,7);
   display.print((wifiConnection && mqttConnection)? "Online": "Offline");
-  display.setCursor(84,24);
+  display.setTextSize(2);
+  display.setCursor(68,18);
   display.print(formattedTime.substring(0,5));
   // DEBUG DISPLEJ
         //display.setCursor(0,0);
@@ -285,4 +288,3 @@ void loop(){
   display.display();
   //delay(10);
 }
-
